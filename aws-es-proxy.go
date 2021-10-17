@@ -22,7 +22,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
@@ -223,7 +225,16 @@ func (p *proxy) getSigner() (*v4.Signer, error) {
 			})
 		} else {
 			logrus.Infoln("Using default credentials")
-			creds = sess.Config.Credentials
+			// creds = sess.Config.Credentials
+			creds = credentials.NewChainCredentials(
+				[]credentials.Provider{
+					&credentials.EnvProvider{},
+					&ec2rolecreds.EC2RoleProvider{
+						Client:       ec2metadata.New(sess),
+						ExpiryWindow: 5 * time.Minute,
+					},
+				},
+			)
 		}
 
 		p.credentials = creds
