@@ -194,7 +194,7 @@ func (p *proxy) parseEndpoint() error {
 	return nil
 }
 
-func (p *proxy) getSigner() *v4.Signer {
+func (p *proxy) getSigner() (*v4.Signer, error) {
 	// Refresh credentials after expiration. Required for STS
 	if p.credentials == nil {
 		sess, err := session.NewSession(
@@ -204,7 +204,7 @@ func (p *proxy) getSigner() *v4.Signer {
 			},
 		)
 		if err != nil {
-			logrus.Debugln(err)
+			return nil, err
 		}
 
 		awsRoleARN := os.Getenv("AWS_ROLE_ARN")
@@ -230,7 +230,7 @@ func (p *proxy) getSigner() *v4.Signer {
 		logrus.Infoln("Generated fresh AWS Credentials object")
 	}
 
-	return v4.NewSigner(p.credentials)
+	return v4.NewSigner(p.credentials), nil
 }
 
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -282,11 +282,12 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Make signV4 optional
 	if !p.nosignreq {
 		// Start AWS session from ENV, Shared Creds or EC2Role
-		signer := p.getSigner()
-
-		// Sign the request with AWSv4
-		payload := bytes.NewReader(replaceBody(req))
-		_, err := signer.Sign(req, payload, p.service, p.region, time.Now())
+		signer, err := p.getSigner()
+		if err == nil {
+			// Sign the request with AWSv4
+			payload := bytes.NewReader(replaceBody(req))
+			_, err = signer.Sign(req, payload, p.service, p.region, time.Now())
+		}
 		if err != nil {
 			p.credentials = nil
 			logrus.Errorln("Failed to sign", err)
